@@ -1,179 +1,193 @@
-# Education and Household Income Across the United States
+# Building a Simple Machine Learning Model in Python
 
 ## Introduction
 
-Education is often viewed as an important factor in economic opportunity. People with higher levels of education tend to have access to different career opportunities, but the relationship between education and income can vary across geographic areas. Differences in industries, cost of living, and local economies may also influence household income.
+Machine learning allows us to use patterns in existing data to make predictions about new observations. For example, a real estate company might want to estimate property values based on a house's age, location, and proximity to public transportation. Instead of manually estimating every property, we can train a machine learning model to identify relationships between these features and historical house prices.
 
-I wanted to explore whether states with higher levels of educational attainment also tend to have higher median household incomes. Rather than looking at individual education and income records, I used publicly available Census data to compare educational attainment and income across U.S. states.
+In this tutorial, we'll walk through the process of building a predictive model in Python, from importing a raw dataset to evaluating its performance. We'll use the [Real Estate Valuation dataset](https://archive.ics.uci.edu/dataset/477/real+estate+valuation+data+set) from the UCI Machine Learning Repository, which contains information about properties in New Taipei City, Taiwan. Our goal is to predict house prices per unit area using property characteristics.
 
-My goal was to create a dataset that could help identify broad patterns between education and economic outcomes and provide a starting point for further analysis.
+By the end, you'll know how to prepare data, split it into training and testing sets, train multiple models, make predictions, and compare their performance.
 
-## Research Question
+## Step 1: Load and Explore the Data
 
-**How does median household income vary across education levels among U.S. states?**
+First, we need to import the libraries we'll use. We'll use `scikit-learn` to train three different regression models: Linear Regression, Decision Tree Regression, and K-Nearest Neighbors (KNN) Regression.
 
-More specifically, I wanted to investigate which educational attainment categories have the strongest relationships with median household income. I grouped educational attainment into five categories:
+Install the required packages if you haven't already:
 
-- Less than a high school education
-- High school diploma through associate's degree
-- Bachelor's degree only
-- Master's degree only
-- Professional degree or doctorate
-
-## Data Source and Ethics
-
-I collected my data from the [U.S. Census Bureau's American Community Survey (ACS)](https://www.census.gov/programs-surveys/acs). The ACS provides demographic and economic estimates for communities throughout the United States.
-
-I used the Census API to retrieve ACS five-year estimates. The main Census tables used were:
-
-- **B01003:** Total population
-- **B15003:** Educational attainment for the population age 25 and older
-- **B19013:** Median household income
-
-The data comes from publicly available, aggregated Census estimates rather than private individual records. Because I used an official government API instead of scraping individual websites, there were no concerns about accessing private information or collecting data without permission. I also avoided collecting personally identifiable information.
-
-For anyone interested in a similar project, the [Census API documentation](https://www.census.gov/data/developers/data-sets.html) explains how to access available datasets and variables.
-
-## Data Collection and Cleaning
-
-I used Python to retrieve and organize the data. The main packages were `census` and `pandas`. The Census Python package makes it possible to request specific variables from the API without manually constructing each request.
-
-The general process was:
-
-1. Obtain a free API key from the [Census Bureau](https://api.census.gov/data/key_signup.html).
-2. Use the `Census` package to request population, income, and educational attainment variables.
-3. Convert the API response into a pandas DataFrame.
-4. Rename the Census variable codes to more readable column names.
-5. Convert numeric variables to numeric data types and treat negative Census estimates as missing values.
-6. Combine the individual educational attainment counts into five broader categories.
-7. Calculate the percentage of adults age 25 and older in each education category.
-8. Export the cleaned dataset as a CSV file.
-
-For example, the percentage of adults with only a bachelor's degree was calculated by dividing the number of adults whose highest reported educational attainment was a bachelor's degree by the total population age 25 and older, then multiplying by 100.
-
-The final dataset contains population, median household income, and five educational attainment percentages for each geographic area.
-
-The full collection and cleaning process is available in my [GitHub code repository](https://github.com/Lilian2345/386-Data-Acquisition-Blog/).
-
-## Exploratory Data Analysis
-
-I used `pandas`, `matplotlib`, and `seaborn` to explore the dataset. My analysis focused on comparing population and income across states and examining the relationships between educational attainment and median household income.
-
-### Population and Income Across States
-
-First, I compared population and median household income across the geographic areas in the dataset. I converted population into millions and income into thousands of dollars to make the charts easier to read.
-
-```{python}
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-df = pd.read_csv("data/census_educational_data.csv")
-
-df["population_millions"] = df["total_pop"] / 1000000
-df["income_thousands"] = df["median_income"] / 1000
-
-largest_pop = df.sort_values("population_millions", ascending=False)
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 8))
-
-sns.barplot(
-    data=largest_pop,
-    x="population_millions",
-    y="state",
-    hue="population_millions",
-    palette="Blues_r",
-    legend=False,
-    ax=axes[0]
-)
-
-axes[0].set_title("Population by State")
-axes[0].set_xlabel("Population (Millions)")
-axes[0].set_ylabel("")
-
-sns.barplot(
-    data=largest_pop.sort_values("income_thousands", ascending=False),
-    x="income_thousands",
-    y="state",
-    hue="income_thousands",
-    palette="Greens_r",
-    legend=False,
-    ax=axes[1]
-)
-
-axes[1].set_title("Median Household Income by State")
-axes[1].set_xlabel("Median Income (Thousands of Dollars)")
-axes[1].set_ylabel("")
-
-plt.tight_layout()
-plt.show()
+```bash
+pip install ucimlrepo pandas scikit-learn
 ```
 
-The dataset contains 52 geographic observations: the 50 states, Washington, D.C., and Puerto Rico. The average median household income across these areas was approximately **$79,371**, with a median of approximately $77,419. Washington, D.C. had the highest median household income at $109,870, while Puerto Rico had the lowest at $26,297. Among the 50 states, Massachusetts had the highest median household income at $103,960, and Mississippi had the lowest at $56,447.
+Next, import the libraries and retrieve the dataset:
 
-### Educational Attainment and Income
+```python
+import pandas as pd
+from ucimlrepo import fetch_ucirepo
 
-Next, I examined how each educational attainment category was associated with median household income. I created scatterplots with linear regression lines to visualize the relationships. I also calculated correlation coefficients to measure the strength and direction of each linear association.
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.neighbors import KNeighborsRegressor
 
-```{python}
-education_vars = {
-    "less_than_hs_pct": "Less Than High School",
-    "hs_to_associates_pct": "High School Through Associate's",
-    "bachelors_only_pct": "Bachelor's Degree Only",
-    "masters_only_pct": "Master's Degree Only",
-    "professional_or_doctorate_pct": "Professional Degree or Doctorate"
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
+
+# load in the real_estate dataset
+real_estate_valuation = fetch_ucirepo(id=477)
+real_estate = real_estate_valuation.data.original
+
+display(real_estate.head())
+print(real_estate.shape)
+print(real_estate.isnull().sum())
+```
+
+The `head()` method displays the first five rows, while `shape` tells us how many rows and columns the dataset contains. Checking for missing values helps us identify whether cleaning is necessary.
+
+The dataset contains 414 observations and information about transaction dates, house age, distance to the nearest MRT station, nearby convenience stores, and geographic coordinates. Our target is the house price per unit area.
+
+## Step 2: Prepare the Data
+
+Before training a model, we need to separate the variables we want to use for prediction from the variable we want to predict.
+
+- **Features (`X`):** The input variables used to make predictions.
+- **Target (`y`):** The outcome the model is learning to predict.
+
+For this example, we'll exclude the `No` column because it is an observation identifier rather than a meaningful property characteristic.
+
+```python
+X = real_estate.drop(
+    columns=['No', 'Y house price of unit area']
+)
+
+y = real_estate['Y house price of unit area']
+```
+
+Next, we should check for missing values and consider whether the features need to be converted into a format the model can use. This dataset contains numerical features and no missing values, so we don't need to impute missing data or encode categorical variables.
+
+However, preprocessing depends on the dataset and model. For example, if a dataset contains categorical variables such as property type, we may need to encode them. KNN is also sensitive to differences in feature scales, so later in this tutorial, we will standardize its inputs.
+
+Now, we'll divide our data into training and testing sets.
+
+```python
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+```
+
+The `test_size=0.2` argument reserves 20% of the observations for testing, leaving 80% for training. The training data teaches the model to recognize patterns, while the testing data helps us evaluate how well it predicts observations it hasn't seen.
+
+Setting `random_state=42` makes the split reproducible, allowing us to obtain the same training and testing observations when we rerun the code.
+
+### Standardizing the Data
+
+Some machine learning models, such as K-Nearest Neighbors (KNN), are sensitive to the scale of the features. For example, house age is measured in years, while distance to the nearest MRT station is measured in meters. Because KNN uses distances to find similar observations, features with larger numerical ranges can have a disproportionate influence on predictions.
+
+Standardization puts features on a common scale by subtracting the mean and dividing by the standard deviation. The resulting features have a mean of approximately 0 and a standard deviation of 1.
+
+```python
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+```
+
+We use `fit_transform()` on the training data to calculate the mean and standard deviation and standardize its features. We then use `transform()` on the test data with those same values. This prevents data leakage, which occurs when information from the test set influences the training process.
+
+Standardization is especially useful for KNN, although it is generally not necessary for Linear Regression or Decision Tree Regression. To use the standardized data, train KNN with `X_train_scaled` and make predictions using `X_test_scaled`. For simplicity's sake, we won't do that here, but just know that standarizing your features can be very useful in certain situations.
+
+## Step 3: Train Three Regression Models
+
+Now we can train our models. Each algorithm approaches prediction differently:
+
+| Model | How it works |
+|---|---|
+| Linear Regression | Estimates a linear relationship between features and the target. |
+| Decision Tree Regressor | Learns decision rules that divide observations into groups. |
+| KNN Regressor | Predicts values using the target values of nearby observations. |
+
+We'll initialize each model and fit it to our training data using `.fit()`.
+
+```python
+LRmodel = LinearRegression()            # choose an ML model
+LRmodel.fit(X_train, y_train)           # fit the model on the training data
+
+DTmodel = DecisionTreeRegressor()                         
+DTmodel.fit(X_train, y_train)                
+
+Kmodel = KNeighborsRegressor()               
+Kmodel.fit(X_train, y_train)                
+```
+
+That's it! Each model has now learned from the training data. However, training a model doesn't automatically mean it will make accurate predictions. We need to evaluate how well it performs on new data.
+
+## Step 4: Make Predictions and Evaluate Performance
+
+We can use the `.predict()` method to generate predictions for our test observations. Before interpreting the results, it's important to choose appropriate evaluation metrics.
+
+Because we're predicting continuous house prices, this is a **regression problem**. So, we'll use three common regression metrics:
+
+- **Mean Absolute Error (MAE):** The average absolute difference between predicted and actual values. Lower is better.
+- **Root Mean Squared Error (RMSE):** Measures prediction error while penalizing larger errors more heavily. Lower is better.
+- **\(R^2\):** Measures how much variation in the target is explained by the model relative to a baseline that predicts the target mean. A value closer to 1 generally indicates a better fit.
+
+The following code calculates all three metrics for each model:
+
+```python
+
+models = {
+    "Linear Regression": LRmodel, 
+    "Decision Tree Regressor": DTmodel, 
+    "KNN Regressor": Kmodel
 }
 
-fig, axes = plt.subplots(3, 2, figsize=(8, 10))
-axes = axes.flatten()
+results = []
 
-for i, (variable, label) in enumerate(education_vars.items()):
-    correlation = df[variable].corr(df["income_thousands"])
+for name, model in models.items():
+    y_pred = model.predict(X_test)
 
-    sns.regplot(
-        data=df,
-        x=variable,
-        y="income_thousands",
-        ax=axes[i],
-        color="purple",
-        scatter_kws={"alpha": 0.7}
-    )
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = mean_squared_error(y_test, y_pred) ** 0.5
+    r2 = r2_score(y_test, y_pred)
 
-    axes[i].set_title(
-        f"{label} vs. Income\nCorrelation: {correlation:.3f}"
-    )
-    axes[i].set_xlabel("Percentage of Adults Age 25+")
-    axes[i].set_ylabel("Median Household Income (Thousands)")
+    results.append({
+        "Model": name,
+        "MAE": mae,
+        "RMSE": rmse,
+        "R²": r2
+    })
 
-    axes[i].xaxis.set_major_formatter(
-        plt.FuncFormatter(lambda x, _: f"{x:.0f}%")
-    )
+results_df = pd.DataFrame(results)
+display(results_df.round(3))
 
-fig.delaxes(axes[5])
-plt.tight_layout()
-plt.show()
 ```
 
-The strongest positive correlation was between the percentage of adults with a master's degree only and median household income (**0.721**). The percentage with a bachelor's degree only also had a strong positive correlation (**0.712**). The professional degree or doctorate category had a positive correlation of **0.580**.
+We can compare the models using the resulting table. A lower MAE or RMSE means the model's predictions are closer to the actual values on average, while a higher \(R^2\) generally indicates a better fit.
 
-On the other hand, the percentage of adults with less than a high school education had a negative correlation of **-0.479**. The high school through associate's degree category also had a negative correlation of **-0.616**.
+You can also compare training and testing performance to check for potential overfitting:
 
-Overall, the results suggest that states with higher percentages of adults with bachelor's and master's degrees also tend to have higher median household incomes. However, these relationships are based on comparisons between states, not individual people. Also, since the education categories add up to the entire adult population, a higher percentage in one category means a lower combined percentage in the others. Therefore, these relationships should simply be interpreted as comparisons rather than evidence of a causal relationship.
+```python
+for name, model in models.items():
+    train_r2 = model.score(X_train, y_train)
+    test_r2 = model.score(X_test, y_test)
 
-## Limitations and Further Questions
+    print(f"{name}")
+    print(f"  Training R²: {train_r2:.3f}")
+    print(f"  Testing R²:  {test_r2:.3f}")
+```
 
-This analysis has some limitations. Since it compares data across geographic areas rather than individuals, it cannot tell us whether people with more education necessarily earn more. Household income is also influenced by factors such as household size, local industries, and cost of living, which are not included in this dataset. Additionally, correlation does not necessarily mean causation.
+If a model performs much better on the training set than on the test set, it may be overfitting---aka learning patterns specific to its training observations rather than generalizable relationships. A decision tree, for example, can become very complex and memorize its training data, resulting in a nearly perfect training accuracy, but a not so perfect testing accuracy. 
 
-A good next step would be to expand the dataset to smaller geographic areas, such as counties, and include additional variables like unemployment, poverty, and cost of living (such as the CPI). This would provide more observations and help explain why income and educational attainment vary across different areas.
+To avoid this, you can tune the model's **hyperparameters**—the configuration settings defined before training that control how a model learns. For instance, setting `DecisionTreeRegressor(max_depth=5)` constrains the tree's depth, preventing it from over-memorizing the training data and improving its ability to generalize to unseen test data.
 
-## Resources
+## Conclusion
 
-- [U.S. Census Bureau](https://www.census.gov/)
-- [American Community Survey](https://www.census.gov/programs-surveys/acs)
-- [Census API Documentation](https://www.census.gov/data/developers/data-sets.html)
-- [Census API Key Signup](https://api.census.gov/data/key_signup.html)
-- [Census Python Package](https://github.com/datamade/census)
-- [Pandas Documentation](https://pandas.pydata.org/docs/)
-- [Seaborn Documentation](https://seaborn.pydata.org/)
+We've taken a dataset from the UCI Machine Learning Repository and used it to train, evaluate, and interpret three machine learning models. The workflow is broadly applicable to other predictive modeling tasks: load your data, prepare features and targets, split the observations, train a model, and evaluate its predictions.
 
-**Code Repository:** [View my project on GitHub](https://github.com/Lilian2345/386-Data-Acquisition-Blog/tree/main)
+The most important takeaway is that building a model is only one part of machine learning. Understanding its errors, comparing appropriate metrics, and checking whether it generalizes to unseen data are equally important.
+
+As a next step, try changing the train-test split or tuning the Decision Tree and KNN models. You could also explore another dataset from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/datasets) and apply the same workflow to a new prediction problem.
